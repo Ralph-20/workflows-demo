@@ -30,3 +30,36 @@ export type DurableChunk =
 export function isTerminalDurableChunk(chunk: DurableChunk): boolean {
   return chunk.kind === "run";
 }
+
+/** Tab 02 — automatic retries. One `attempt` chunk pair per execution of the step. */
+export type RetryChunk =
+  | { kind: "attempt"; phase: "running"; attempt: number; at: number }
+  | {
+      kind: "attempt";
+      phase: "failed";
+      attempt: number;
+      at: number;
+      durationMs: number;
+      /** Backoff the step asked for via RetryableError({ retryAfter }). */
+      retryAfterMs: number;
+      error: string;
+    }
+  | {
+      kind: "attempt";
+      phase: "completed";
+      attempt: number;
+      at: number;
+      durationMs: number;
+    }
+  | {
+      kind: "run";
+      phase: "completed";
+      at: number;
+      totalMs: number;
+      /** Attempt number that finally succeeded. */
+      attempts: number;
+    };
+
+export function isTerminalRetryChunk(chunk: RetryChunk): boolean {
+  return chunk.kind === "run";
+}

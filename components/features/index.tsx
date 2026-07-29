@@ -1,6 +1,7 @@
 import type { Feature, FeatureSlug } from "@/lib/features";
 import { DurableFeature } from "@/components/features/durable-feature";
 import { PlaceholderFeature } from "@/components/features/placeholder";
+import { RetriesFeature } from "@/components/features/retries-feature";
 
 export type FeaturePanelProps = { feature: Feature };
 
@@ -14,7 +15,7 @@ const PANELS: Record<
   (props: FeaturePanelProps) => React.ReactNode
 > = {
   durable: DurableFeature,
-  retries: PlaceholderFeature,
+  retries: RetriesFeature,
   hooks: PlaceholderFeature,
   sleep: PlaceholderFeature,
   parallel: PlaceholderFeature,

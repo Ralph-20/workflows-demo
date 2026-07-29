@@ -1,8 +1,14 @@
 import { getRun, start } from "workflow/api";
-import { isTerminalDurableChunk, type DurableChunk } from "@/lib/chunks";
-import { clampInt, MAX_PIPELINE_STEPS } from "@/lib/limits";
+import {
+  isTerminalDurableChunk,
+  isTerminalRetryChunk,
+  type DurableChunk,
+  type RetryChunk,
+} from "@/lib/chunks";
+import { clampInt, MAX_FORCED_FAILURES, MAX_PIPELINE_STEPS } from "@/lib/limits";
 import { relayRun, tailIndexOf } from "@/lib/relay";
 import { durablePipeline } from "@/lib/workflows/durable";
+import { retryingStep } from "@/lib/workflows/retries";
 
 /**
  * One entry point for every capability, discriminated by `feature`. Each
@@ -19,6 +25,7 @@ type Body = {
   feature?: unknown;
   action?: unknown;
   steps?: unknown;
+  failures?: unknown;
   runId?: unknown;
   startIndex?: unknown;
 };
@@ -40,8 +47,26 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (body.feature === "durable") return durable(body, request.signal);
+  if (body.feature === "retries") return retries(body, request.signal);
 
   return bad(`Unknown feature: ${String(body.feature)}`);
+}
+
+/** Tab 02 — run a step that fails on purpose N times, then succeeds. */
+async function retries(body: Body, signal: AbortSignal): Promise<Response> {
+  const failures = clampInt(body.failures, 0, MAX_FORCED_FAILURES, 2);
+
+  try {
+    const run = await start(retryingStep, [failures]);
+    return relayRun<RetryChunk>({
+      runId: run.runId,
+      head: { type: "started", runId: run.runId },
+      isTerminal: isTerminalRetryChunk,
+      signal,
+    });
+  } catch (error) {
+    return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
 }
 
 /** Tab 01 — start a pipeline run, or reattach to one already in flight. */
