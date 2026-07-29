@@ -130,3 +130,37 @@ export type SleepChunk =
 export function isTerminalSleepChunk(chunk: SleepChunk): boolean {
   return chunk.kind === "sleeping" || chunk.kind === "run";
 }
+
+/** Tab 05 — parallel fan-out. */
+export type FanoutItem = {
+  index: number;
+  name: string;
+  /** Start, measured from the moment the fan-out began. */
+  startOffsetMs: number;
+  durationMs: number;
+};
+
+export type FanoutChunk =
+  | {
+      kind: "item";
+      phase: "running" | "completed";
+      index: number;
+      name: string;
+      at: number;
+      startOffsetMs: number;
+      durationMs?: number;
+    }
+  | {
+      kind: "run";
+      phase: "completed";
+      at: number;
+      /** Elapsed time across the whole fan-out. */
+      wallMs: number;
+      /** Sum of every step's own duration — what it would cost sequentially. */
+      sumMs: number;
+      items: FanoutItem[];
+    };
+
+export function isTerminalFanoutChunk(chunk: FanoutChunk): boolean {
+  return chunk.kind === "run";
+}

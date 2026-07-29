@@ -2,18 +2,26 @@ import { getRun, resumeHook, start } from "workflow/api";
 import { HookNotFoundError } from "workflow/errors";
 import {
   isTerminalDurableChunk,
+  isTerminalFanoutChunk,
   isTerminalHookChunk,
   isTerminalRetryChunk,
   isTerminalSleepChunk,
   type DurableChunk,
+  type FanoutChunk,
   type HookChunk,
   type RetryChunk,
   type SleepChunk,
 } from "@/lib/chunks";
 import { cleanupStaleRuns } from "@/lib/cleanup";
-import { clampInt, MAX_FORCED_FAILURES, MAX_PIPELINE_STEPS } from "@/lib/limits";
+import {
+  clampInt,
+  MAX_FANOUT,
+  MAX_FORCED_FAILURES,
+  MAX_PIPELINE_STEPS,
+} from "@/lib/limits";
 import { relayRun, tailIndexOf, type RelayEvent } from "@/lib/relay";
 import { durablePipeline } from "@/lib/workflows/durable";
+import { fanoutRun } from "@/lib/workflows/fanout";
 import { approvalRun } from "@/lib/workflows/hooks";
 import { retryingStep } from "@/lib/workflows/retries";
 import { retentionRun } from "@/lib/workflows/sleep";
@@ -33,6 +41,7 @@ type Body = {
   feature?: unknown;
   action?: unknown;
   steps?: unknown;
+  items?: unknown;
   failures?: unknown;
   amountUsd?: unknown;
   token?: unknown;
@@ -61,8 +70,26 @@ export async function POST(request: Request): Promise<Response> {
   if (body.feature === "retries") return retries(body, request.signal);
   if (body.feature === "hooks") return hooks(body, request.signal);
   if (body.feature === "sleep") return sleeper(body, request.signal);
+  if (body.feature === "parallel") return parallel(body, request.signal);
 
   return bad(`Unknown feature: ${String(body.feature)}`);
+}
+
+/** Tab 05 — fan N steps out at once. Capped at MAX_FANOUT (G5). */
+async function parallel(body: Body, signal: AbortSignal): Promise<Response> {
+  const items = clampInt(body.items, 1, MAX_FANOUT, 5);
+
+  try {
+    const run = await start(fanoutRun, [items]);
+    return relayRun<FanoutChunk>({
+      runId: run.runId,
+      head: { type: "started", runId: run.runId },
+      isTerminal: isTerminalFanoutChunk,
+      signal,
+    });
+  } catch (error) {
+    return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
 }
 
 /**
