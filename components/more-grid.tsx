@@ -3,12 +3,16 @@ type MoreCard = {
   description: string;
   href: string;
   /**
-   * Version marker for anything not in the shipped 4.x line. As of this build
-   * npm has `workflow@4.7.0` on `latest` and `5.0.0-beta.37` on `beta`, so
-   * everything tagged here is genuinely still pre-release — the tag is not
-   * decoration.
+   * Pre-release marker. As of this build npm has `workflow@4.7.0` on `latest`
+   * and `5.0.0-beta.37` on `beta`, so everything tagged here is genuinely not
+   * GA yet — the tag is not decoration.
+   *
+   * Two different gates, deliberately not collapsed into one label:
+   * - "5.0 beta" needs a 5.x pre-release of the SDK. This demo is pinned to
+   *   4.6.2, so those features do NOT work here.
+   * - "beta" is a platform feature behind an opt-in, independent of SDK version.
    */
-  tag?: string;
+  tag?: "5.0 beta" | "beta";
 };
 
 const MORE: MoreCard[] = [
@@ -23,6 +27,12 @@ const MORE: MoreCard[] = [
     description:
       "Every run, step, attempt, and payload is inspectable after the fact — the same event log the runtime replays from, rendered as a timeline.",
     href: "https://workflow-sdk.dev/docs/observability",
+  },
+  {
+    title: "Trace viewer",
+    description:
+      "Search across spans, zoom into any part of the timeline, and step through with the keyboard, then click a step for its inputs, outputs and run metadata. Runs locally too.",
+    href: "https://vercel.com/changelog/redesigned-trace-viewer-for-vercel-workflows",
   },
   {
     title: "Python runtime",
@@ -43,10 +53,10 @@ const MORE: MoreCard[] = [
     href: "https://workflow-sdk.dev/worlds/vercel",
   },
   {
-    title: "Cancel work mid-flight",
+    title: "Stop a run from anywhere",
     description:
-      "Stop a whole run with getRun(runId).cancel(), or pass an AbortSignal into a step and abort just that operation. Signals cross workflow and step boundaries, so a stop button reaches work running in another process.",
-    href: "https://workflow-sdk.dev/cookbook/advanced/distributed-abort-controller",
+      "A route handler holding nothing but a run id can end the run with getRun(runId).cancel() — no shared process, no in-memory handle. The Stop button on tab 06 is exactly this.",
+    href: "https://workflow-sdk.dev/cookbook/agent-patterns/agent-cancellation",
   },
   {
     title: "Runs anywhere",
@@ -73,10 +83,24 @@ const MORE: MoreCard[] = [
     href: "https://workflow-sdk.dev/docs/observability",
   },
   {
-    title: "Multi-region run data",
+    title: "Regional run placement",
     description:
-      "Runs pin to the region that created them, keeping workflow data, queuing and streaming close to your users. The 4.x line this demo runs on keeps all workflow data in one region.",
-    href: "https://workflow-sdk.dev/v5/worlds/vercel#multi-region",
+      "A run keeps its state, queue dispatch and output streams in one home region for its lifetime — where it started, or a region you pass to start(). An agent serving Sydney executes and streams from Sydney, and fails over to the next closest region during an incident.",
+    href: "https://vercel.com/changelog/configure-where-run-state-lives-in-vercel-workflows",
+    tag: "5.0 beta",
+  },
+  {
+    title: "AbortSignal across steps",
+    description:
+      "The standard AbortController and AbortSignal APIs work across workflow and step boundaries. The signal stays durable through suspensions and replay, so a running step sees the cancellation even in a separate function invocation.",
+    href: "https://vercel.com/changelog/workflow-sdk-now-supports-inflight-cancellation",
+    tag: "5.0 beta",
+  },
+  {
+    title: "Compressed payloads",
+    description:
+      "Run, hook and step inputs and outputs are compressed with zstd, automatically and only when it helps. For the JSON payloads typical of AI conversations, storage size and cost can drop by up to 85%.",
+    href: "https://vercel.com/changelog/workflow-sdk-now-compresses-run-and-step-payloads",
     tag: "5.0 beta",
   },
   {
@@ -85,6 +109,13 @@ const MORE: MoreCard[] = [
       "Steps execute inline in the same invocation as the workflow replay instead of round-tripping the queue every time, and only fan out to the queue for real parallelism. A ten-step serial run used to need about 21 invocations.",
     href: "https://workflow-sdk.dev/v5/docs/changelog/eager-processing",
     tag: "5.0 beta",
+  },
+  {
+    title: "30-minute steps",
+    description:
+      "Steps on Pro and Enterprise can run up to 30 minutes, up from 800 seconds, via extended function durations. Opt in with an environment variable; Hobby stays at 5 minutes.",
+    href: "https://vercel.com/changelog/workflow-steps-now-support-extended-function-durations",
+    tag: "beta",
   },
 ];
 
@@ -96,12 +127,15 @@ export function MoreGrid() {
       </h2>
       <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-secondary">
         Covered in the docs but not wired up as live demos on this page.
-        Everything here ships in the product today except the two marked{" "}
-        <span className="font-mono text-[12px] text-amber">5.0 beta</span>,
-        which are still pre-release.
+        Everything here ships today except the tagged cards:{" "}
+        <span className="font-mono text-[12px] text-amber">5.0 beta</span> needs
+        a 5.x pre-release of the SDK, so those four do not work on the 4.6.2 this
+        demo is pinned to, and{" "}
+        <span className="font-mono text-[12px] text-amber">beta</span> is a
+        platform feature behind an opt-in.
       </p>
 
-      {/* 12 cards, so 4-up on wide screens leaves no half-empty final row. */}
+      {/* 16 cards, so 4-up on wide screens leaves no half-empty final row. */}
       <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {MORE.map((item) => (
           <li key={item.title}>
