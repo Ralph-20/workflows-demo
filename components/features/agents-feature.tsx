@@ -30,7 +30,8 @@ import { isAbortError, readNdjson } from "@/lib/stream";
 type Row = {
   name: string;
   role: "model" | "tool";
-  phase: "running" | "completed";
+  phase: "running" | "completed" | "failed";
+  attempt: number;
   durationMs?: number;
   detail?: string;
 };
@@ -102,14 +103,23 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
     setSummary(null);
     setRunId(null);
 
+    // Tracked locally rather than from state, which would be stale inside this
+    // closure. `failed` means the relay already explained the failure.
+    let failed = false;
+    let gotAnswer = false;
+
     try {
       await readNdjson<RelayEvent<AgentChunk>>(
         "/api/demo",
         { feature: "agents", question },
         (event) => {
           if (event.type === "started") setRunId(event.runId);
-          if (event.type === "error") setError(event.message);
+          if (event.type === "error") {
+            failed = true;
+            setError(event.message);
+          }
           if (event.type === "steps") setSteps(event.steps);
+          if (event.type === "done" && event.reason === "failed") failed = true;
           if (event.type !== "chunk") return;
 
           const chunk = event.chunk;
@@ -117,11 +127,14 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
           if (chunk.kind === "step") {
             setRows((prev) => {
               const next = [...prev];
+              // Keyed by name, so a retried step updates its own row and shows
+              // an attempt count instead of appearing as a duplicate step.
               const at = next.findIndex((r) => r.name === chunk.name);
               const row: Row = {
                 name: chunk.name,
                 role: chunk.role,
                 phase: chunk.phase,
+                attempt: chunk.attempt,
                 durationMs: chunk.durationMs,
                 detail: chunk.detail,
               };
@@ -131,7 +144,10 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
             });
           }
 
-          if (chunk.kind === "answer") setAnswer(chunk.text);
+          if (chunk.kind === "answer") {
+            gotAnswer = true;
+            setAnswer(chunk.text);
+          }
 
           if (chunk.kind === "run") {
             setSummary({
@@ -143,6 +159,20 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
         },
         ac.signal,
       );
+
+      // Belt to the relay's braces. Once the stream has ended, any step still
+      // showing "running" never finished, so mark it failed rather than leaving
+      // it spinning — and if nothing explained why, say something.
+      setRows((prev) =>
+        prev.map((row) =>
+          row.phase === "running" ? { ...row, phase: "failed" } : row,
+        ),
+      );
+      if (!failed && !gotAnswer) {
+        setError(
+          "The run ended before it produced an answer. Check the server logs for the workflow error.",
+        );
+      }
     } catch (cause) {
       if (isAbortError(cause)) return;
       setError(errorMessage(cause));
@@ -155,6 +185,7 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
     key: `${row.name}-${index}`,
     name: `${row.name}  ·  ${row.role}`,
     phase: row.phase,
+    attempt: row.attempt > 1 ? row.attempt : undefined,
     detail: row.durationMs !== undefined ? `${row.durationMs} ms` : undefined,
     note: row.detail,
   }));

@@ -173,6 +173,8 @@ export type AgentChunk =
       name: string;
       /** Whether this step wraps a model call or a tool call. */
       role: "model" | "tool";
+      /** Execution count for this step, so retries read as attempts. */
+      attempt: number;
       at: number;
       durationMs?: number;
       detail?: string;

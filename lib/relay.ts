@@ -40,7 +40,7 @@ export type RelayEvent<C> =
       runId: string;
       /** The startIndex a client should use to reattach from here. */
       nextIndex: number;
-      reason: "closed" | "terminal";
+      reason: "closed" | "terminal" | "failed";
     }
   | { type: "error"; message: string };
 
@@ -66,6 +66,58 @@ type RelayOptions<C> = {
   signal?: AbortSignal;
 };
 
+type ReadResult<C> = {
+  kind: "read";
+  result: ReadableStreamReadResult<C>;
+};
+
+type FailureResult =
+  | { kind: "failed"; status: "failed" | "cancelled" }
+  | { kind: "stopped" };
+
+/** How often the run's status is checked while waiting on its stream. */
+const STATUS_POLL_MS = 400;
+
+/**
+ * Resolves when the run reaches a terminal FAILURE state, or when `stopped()`
+ * goes true because the relay finished on its own.
+ *
+ * Deliberately silent on `completed`: a run can be marked completed while its
+ * last chunks are still in flight, so the happy path must stay driven by the
+ * stream to avoid truncating the tail.
+ */
+async function watchForFailure(
+  run: Run<unknown>,
+  stopped: () => boolean,
+): Promise<FailureResult> {
+  for (;;) {
+    if (stopped()) return { kind: "stopped" };
+
+    const status = await run.status.catch(() => null);
+    if (status === "failed" || status === "cancelled") {
+      return { kind: "failed", status };
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, STATUS_POLL_MS));
+  }
+}
+
+/**
+ * The run's recorded failure message, so the UI can say what actually broke
+ * rather than "something went wrong". First line only, length-capped, and never
+ * the stack — this page is public.
+ */
+async function runFailureMessage(runId: string): Promise<string | null> {
+  try {
+    const record = await getWorld().runs.get(runId, { resolveData: "none" });
+    const message = record.error?.message?.trim();
+    if (!message) return null;
+    return message.split("\n")[0].slice(0, 300);
+  } catch {
+    return null;
+  }
+}
+
 export function relayRun<C>({
   runId,
   startIndex = 0,
@@ -85,27 +137,69 @@ export function relayRun<C>({
       const reader = readable.getReader();
 
       let index = startIndex;
-      let reason: "closed" | "terminal" = "closed";
+      let reason: "closed" | "terminal" | "failed" = "closed";
+      let sawTerminalChunk = false;
+
+      // A workflow that THROWS never writes a terminal chunk and never closes
+      // its stream, so reading alone would block here forever — the client
+      // would sit on a spinner with no way to know the run died. The run's own
+      // status is the authoritative signal, so watch it alongside the stream.
+      let stopWatching = false;
+      const failureWatch = watchForFailure(run, () => stopWatching);
 
       try {
+        // Held across iterations so a chunk is never dropped by losing a race.
+        let pendingRead: Promise<ReadResult<C>> | null = null;
+
         for (;;) {
           if (signal?.aborted) return;
 
-          const { done, value } = await reader.read();
+          if (!pendingRead) {
+            pendingRead = reader
+              .read()
+              .then((result) => ({ kind: "read" as const, result }));
+          }
+
+          const winner = await Promise.race([pendingRead, failureWatch]);
+
+          if (winner.kind !== "read") {
+            if (winner.kind === "failed") reason = "failed";
+            break;
+          }
+
+          pendingRead = null;
+          const { done, value } = winner.result;
           if (done) break;
 
           emit({ type: "chunk", index, chunk: value });
           index += 1;
 
           if (isTerminal?.(value)) {
+            sawTerminalChunk = true;
             reason = "terminal";
             break;
           }
         }
       } finally {
+        stopWatching = true;
         // Releases the underlying stream so an early exit does not leave the
         // run's reader hanging around.
         await reader.cancel().catch(() => {});
+      }
+
+      // The stream can also just close on a failed run. Either way, if the run
+      // ended without a terminal chunk, say so instead of reporting success.
+      if (!sawTerminalChunk) {
+        const status = await run.status.catch(() => null);
+        if (status === "failed" || status === "cancelled") {
+          reason = "failed";
+          emit({
+            type: "error",
+            message:
+              (await runFailureMessage(runId)) ??
+              `The workflow run ${status} before it finished.`,
+          });
+        }
       }
 
       if (epilogue) {

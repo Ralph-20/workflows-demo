@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getWritable } from "workflow";
+import { FatalError, getStepMetadata, getWritable } from "workflow";
 import type { AgentChunk } from "@/lib/chunks";
 import { coerceCity, CITIES, FORECASTS, type City } from "@/lib/forecast";
 import { mockAnswer, mockPlanCity } from "@/lib/mock";
@@ -35,6 +35,23 @@ async function markStart(): Promise<number> {
   return Date.now();
 }
 
+/**
+ * A rejected or missing gateway credential is a configuration problem, not a
+ * blip. Retrying it three more times just burns events and delays the error the
+ * operator actually needs to see, so it is reclassified as fatal.
+ */
+function rethrowModelError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (/unauthenticated|unauthorized|invalid.*(api )?key|forbidden|\b40[13]\b/i.test(message)) {
+    throw new FatalError(`AI Gateway rejected the request: ${message}`);
+  }
+
+  // Anything else (timeout, 5xx, rate limit) is genuinely transient — let the
+  // runtime retry it.
+  throw error;
+}
+
 /** Model call #1: decide which city the question is about. */
 async function planForecastLookup(
   question: string,
@@ -43,12 +60,14 @@ async function planForecastLookup(
   "use step";
 
   const writable = getWritable<AgentChunk>();
+  const { attempt } = getStepMetadata();
   const startedAt = Date.now();
   await emit(writable, {
     kind: "step",
     phase: "running",
     name: "planForecastLookup",
     role: "model",
+    attempt,
     at: startedAt,
   });
 
@@ -56,12 +75,16 @@ async function planForecastLookup(
   if (mock) {
     chosen = mockPlanCity(question);
   } else {
-    const { text } = await generateText({
-      model: MODEL_ID,
-      prompt: `Which of these cities is this question about? Reply with the city name and nothing else.\n\nCities: ${CITIES.join(", ")}\n\nQuestion: ${question}`,
-      maxOutputTokens: 16,
-    });
-    chosen = text;
+    try {
+      const { text } = await generateText({
+        model: MODEL_ID,
+        prompt: `Which of these cities is this question about? Reply with the city name and nothing else.\n\nCities: ${CITIES.join(", ")}\n\nQuestion: ${question}`,
+        maxOutputTokens: 16,
+      });
+      chosen = text;
+    } catch (error) {
+      rethrowModelError(error);
+    }
   }
 
   // The model returns free text, so the choice is validated against the
@@ -74,6 +97,7 @@ async function planForecastLookup(
     phase: "completed",
     name: "planForecastLookup",
     role: "model",
+    attempt,
     at: completedAt,
     durationMs: completedAt - startedAt,
     detail: result.corrected
@@ -89,12 +113,14 @@ async function fetchForecast(city: City): Promise<string> {
   "use step";
 
   const writable = getWritable<AgentChunk>();
+  const { attempt } = getStepMetadata();
   const startedAt = Date.now();
   await emit(writable, {
     kind: "step",
     phase: "running",
     name: "fetchForecast",
     role: "tool",
+    attempt,
     at: startedAt,
   });
 
@@ -109,6 +135,7 @@ async function fetchForecast(city: City): Promise<string> {
     phase: "completed",
     name: "fetchForecast",
     role: "tool",
+    attempt,
     at: completedAt,
     durationMs: completedAt - startedAt,
     detail: payload,
@@ -127,24 +154,32 @@ async function composeAnswer(
   "use step";
 
   const writable = getWritable<AgentChunk>();
+  const { attempt } = getStepMetadata();
   const startedAt = Date.now();
   await emit(writable, {
     kind: "step",
     phase: "running",
     name: "composeAnswer",
     role: "model",
+    attempt,
     at: startedAt,
   });
 
-  const answer = mock
-    ? mockAnswer(city)
-    : (
-        await generateText({
-          model: MODEL_ID,
-          prompt: `Answer the question in two sentences, using only the forecast data provided.\n\nQuestion: ${question}\nCity: ${city}\nForecast: ${forecast}`,
-          maxOutputTokens: 160,
-        })
-      ).text;
+  let answer: string;
+  if (mock) {
+    answer = mockAnswer(city);
+  } else {
+    try {
+      const { text } = await generateText({
+        model: MODEL_ID,
+        prompt: `Answer the question in two sentences, using only the forecast data provided.\n\nQuestion: ${question}\nCity: ${city}\nForecast: ${forecast}`,
+        maxOutputTokens: 160,
+      });
+      answer = text;
+    } catch (error) {
+      rethrowModelError(error);
+    }
+  }
 
   const completedAt = Date.now();
   await emit(writable, {
@@ -152,6 +187,7 @@ async function composeAnswer(
     phase: "completed",
     name: "composeAnswer",
     role: "model",
+    attempt,
     at: completedAt,
     durationMs: completedAt - startedAt,
   });
