@@ -232,11 +232,16 @@ export function SleepFeature({ feature }: { feature: Feature }) {
           <p className="text-[13px] leading-relaxed text-fg-secondary">
             This starts a real run that sleeps for a real 30 days. The HTTP
             request finishes in under a second — the sleep outlives it. Thirty
-            days is just this demo&rsquo;s choice:{" "}
-            <code className="font-mono text-fg">sleep()</code> suspends a
-            workflow for any amount of time you specify, from minutes to days or
-            months, so a long wait does not have to be chopped into a chain of
-            shorter ones.
+            days is only this demo&rsquo;s choice:{" "}
+            <span className="text-fg">
+              there is no cap on how long a single{" "}
+              <code className="font-mono">sleep()</code> can last, and no cap on
+              how long a run can last
+            </span>{" "}
+            — the published limits give both as{" "}
+            <span className="font-mono text-[12px]">No limit</span>. A wait never
+            has to be chopped into a chain of shorter ones to fit inside a
+            ceiling.
           </p>
 
           <RunButton
@@ -327,14 +332,26 @@ export function SleepFeature({ feature }: { feature: Feature }) {
 
               {totalMs !== null && sleptMs !== null ? (
                 <WhatThisShows>
-                  A month-long wait with zero compute cost and no cron or queue
-                  glue to maintain. A suspended workflow is not a process
-                  waiting — there is nothing running to bill, and you pay only
-                  for the compute the steps themselves use, so the wait costs
-                  the same whether it is ten minutes or a full month. The sleep
-                  was real: waking it early is what cut{" "}
-                  {(sleptMs / 1000).toFixed(1)} seconds short of 30 days, and
-                  the run picked up on the very next line.
+                  A month-long wait with no cron or queue glue to maintain, and
+                  no ceiling to design around: maximum sleep duration and
+                  maximum run duration are both published as{" "}
+                  <span className="font-mono text-[12px] text-fg">No limit</span>
+                  . Suspended time is free because nothing on the bill is
+                  measured in elapsed time at all — Workflows bills events, data
+                  written and data retained, so this run costs the same whether
+                  it waits ten minutes or a full month. The sleep was real:
+                  waking it early is what cut {(sleptMs / 1000).toFixed(1)}{" "}
+                  seconds short of 30 days, and the run picked up on the very
+                  next line. What is capped is volume, not time — 25,000 events
+                  and 10,000 steps per run.{" "}
+                  <a
+                    href="https://vercel.com/docs/workflows/pricing"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue underline decoration-blue/30 underline-offset-2 transition-colors hover:decoration-blue"
+                  >
+                    Pricing &amp; limits
+                  </a>
                 </WhatThisShows>
               ) : null}
 
