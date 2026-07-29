@@ -57,7 +57,7 @@ export const FEATURES: readonly Feature[] = [
     teaser:
       "Promise.all over steps fans work out wide, and every branch stays its own durable unit.",
     docsUrl:
-      "https://workflow-sdk.dev/docs/cookbook/common-patterns/sequential-and-parallel",
+      "https://workflow-sdk.dev/cookbook/common-patterns/sequential-and-parallel",
   },
   {
     slug: "agents",
@@ -65,7 +65,7 @@ export const FEATURES: readonly Feature[] = [
     title: "Agents on workflows",
     teaser:
       "Every model call and tool call becomes a named, retryable step you can read in a trace.",
-    docsUrl: "https://workflow-sdk.dev/docs/cookbook/agent-patterns/durable-agent",
+    docsUrl: "https://workflow-sdk.dev/cookbook/agent-patterns/durable-agent",
   },
 ] as const;
 

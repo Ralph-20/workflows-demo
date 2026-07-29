@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 export function Panel({
@@ -203,6 +205,67 @@ export function MetricGrid({ metrics }: { metrics: Metric[] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * A one-line, honest cost note sitting directly under a metric grid. The text
+ * must be derived from the run that just executed — counts of real step events,
+ * real durations. Never an invented dollar figure.
+ */
+export function CostNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="-mt-2 font-mono text-[10px] leading-relaxed tracking-[0.02em] text-fg-tertiary">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The CLI command that opens the run you just watched. Real run id, real
+ * command — `npx workflow inspect run <id>` is what the SDK's own CLI exposes
+ * (`workflow inspect RESOURCE [ID]`), so this is a copyable handoff from the
+ * demo into the visitor's own terminal rather than a screenshot of one.
+ */
+export function InspectRun({ runId }: { runId: string }) {
+  const command = `npx workflow inspect run ${runId}`;
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard is unavailable outside a secure context. The command is
+      // already on screen and selectable, so this is not worth an error box —
+      // and it must not reach the console.
+    }
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-line bg-bg-soft px-3 py-2">
+      <code className="mono-13 min-w-0 flex-1 truncate text-fg-secondary" title={command}>
+        {command}
+      </code>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy ${command} to the clipboard`}
+        className="shrink-0 rounded-[6px] border border-line px-2 py-1 font-mono text-[10px] tracking-[0.08em] text-fg-tertiary uppercase transition-colors hover:border-line-hover hover:text-fg"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
 

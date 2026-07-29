@@ -5,9 +5,11 @@ import { StepLog, type StepRow } from "@/components/step-log";
 import {
   Badge,
   CodeBox,
+  CostNote,
   DocsLink,
   EmptyState,
   ErrorBox,
+  InspectRun,
   JsonBlock,
   MetricGrid,
   Panel,
@@ -217,7 +219,12 @@ export function SleepFeature({ feature }: { feature: Feature }) {
         <PanelBody>
           <p className="text-[13px] leading-relaxed text-fg-secondary">
             This starts a real run that sleeps for a real 30 days. The HTTP
-            request finishes in under a second — the sleep outlives it.
+            request finishes in under a second — the sleep outlives it. Thirty
+            days is just this demo&rsquo;s choice:{" "}
+            <code className="font-mono text-fg">sleep()</code> suspends a
+            workflow for any amount of time you specify, from minutes to days or
+            months, so a long wait does not have to be chopped into a chain of
+            shorter ones.
           </p>
 
           <RunButton
@@ -262,6 +269,15 @@ export function SleepFeature({ feature }: { feature: Feature }) {
             <>
               <MetricGrid metrics={metrics} />
 
+              <CostNote>
+                {rows.length} step{rows.length === 1 ? "" : "s"} executed
+                {sleptMs !== null
+                  ? ` · ${(sleptMs / 1000).toFixed(1)} s suspended, billed $0 of compute`
+                  : sleeping
+                    ? " · suspended right now, billed $0 of compute"
+                    : ""}
+              </CostNote>
+
               {sleeping ? (
                 <div className="rounded-[8px] border border-amber/40 bg-amber/8 px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
@@ -300,10 +316,13 @@ export function SleepFeature({ feature }: { feature: Feature }) {
               {totalMs !== null && sleptMs !== null ? (
                 <WhatThisShows>
                   A month-long wait with zero compute cost and no cron or queue
-                  glue to maintain — billing is events plus stored data, not
-                  wall-clock time. The sleep was real: waking it early is what
-                  cut {(sleptMs / 1000).toFixed(1)} seconds short of 30 days,
-                  and the run picked up on the very next line.
+                  glue to maintain. A suspended workflow is not a process
+                  waiting — there is nothing running to bill, and you pay only
+                  for the compute the steps themselves use, so the wait costs
+                  the same whether it is ten minutes or a full month. The sleep
+                  was real: waking it early is what cut{" "}
+                  {(sleptMs / 1000).toFixed(1)} seconds short of 30 days, and
+                  the run picked up on the very next line.
                 </WhatThisShows>
               ) : null}
 
@@ -327,6 +346,19 @@ export function SleepFeature({ feature }: { feature: Feature }) {
                     been abandoned for over an hour, so sleepers nobody came
                     back for do not pile up.
                   </p>
+                </SubSection>
+              ) : null}
+
+              {runId ? (
+                <SubSection
+                  label="Inspect this run"
+                  aside={
+                    <span className="font-mono text-[10px] text-fg-tertiary">
+                      real run id
+                    </span>
+                  }
+                >
+                  <InspectRun runId={runId} />
                 </SubSection>
               ) : null}
 

@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorBox,
   Field,
+  InspectRun,
   JsonBlock,
   MetricGrid,
   Panel,
@@ -334,6 +335,19 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
                   }
                 >
                   <Waterfall bars={bars} totalMs={traceSpan} />
+                </SubSection>
+              ) : null}
+
+              {runId ? (
+                <SubSection
+                  label="Inspect this run"
+                  aside={
+                    <span className="font-mono text-[10px] text-fg-tertiary">
+                      real run id
+                    </span>
+                  }
+                >
+                  <InspectRun runId={runId} />
                 </SubSection>
               ) : null}
 

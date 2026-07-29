@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorBox,
   Field,
+  InspectRun,
   JsonBlock,
   MetricGrid,
   Panel,
@@ -326,6 +327,19 @@ export function HooksFeature({ feature }: { feature: Feature }) {
               <SubSection label="Steps">
                 <StepLog rows={stepRows} />
               </SubSection>
+
+              {runId ? (
+                <SubSection
+                  label="Inspect this run"
+                  aside={
+                    <span className="font-mono text-[10px] text-fg-tertiary">
+                      real run id
+                    </span>
+                  }
+                >
+                  <InspectRun runId={runId} />
+                </SubSection>
+              ) : null}
 
               {outcome && runId ? (
                 <SubSection label="Raw run">

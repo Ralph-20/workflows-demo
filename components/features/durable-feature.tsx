@@ -5,10 +5,12 @@ import { StepLog, type StepRow } from "@/components/step-log";
 import {
   Badge,
   CodeBox,
+  CostNote,
   DocsLink,
   EmptyState,
   ErrorBox,
   Field,
+  InspectRun,
   JsonBlock,
   MetricGrid,
   Panel,
@@ -317,6 +319,13 @@ export function DurableFeature({ feature }: { feature: Feature }) {
             <>
               <MetricGrid metrics={metrics} />
 
+              <CostNote>
+                {done} of {stepCount} steps executed
+                {summary ? ` · ${summary.totalMs} ms of step compute` : ""} · the
+                run itself is not a process, so waiting between steps bills
+                nothing
+              </CostNote>
+
               {summary ? (
                 <WhatThisShows>
                   Progress lives in the durable run, not in the HTTP request
@@ -329,6 +338,19 @@ export function DurableFeature({ feature }: { feature: Feature }) {
               <SubSection label="Steps">
                 <StepLog rows={stepRows} />
               </SubSection>
+
+              {runId ? (
+                <SubSection
+                  label="Inspect this run"
+                  aside={
+                    <span className="font-mono text-[10px] text-fg-tertiary">
+                      real run id
+                    </span>
+                  }
+                >
+                  <InspectRun runId={runId} />
+                </SubSection>
+              ) : null}
 
               {summary && runId ? (
                 <SubSection label="Raw run">
