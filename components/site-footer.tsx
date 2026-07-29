@@ -1,10 +1,5 @@
-/**
- * TODO(deploy): repoint at this demo's own public repo once it exists. Until
- * then this is the Workflow SDK repo, which matches how the sibling demo sites
- * link the product they demonstrate — but the link text says "Source", so it
- * should end up pointing at this site's source.
- */
-export const SOURCE_URL = "https://github.com/vercel/workflow";
+/** This site's own source, which is what the "Source" link promises. */
+export const SOURCE_URL = "https://github.com/Ralph-20/workflows-demo";
 
 export function SiteFooter() {
   return (
