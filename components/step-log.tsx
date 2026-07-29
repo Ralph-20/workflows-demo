@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-export type StepPhase = "running" | "completed" | "failed";
+export type StepPhase = "running" | "completed" | "failed" | "cancelled";
 
 export type StepRow = {
   /** Stable identity for the row (usually the step index). */
@@ -19,24 +19,27 @@ const PHASE_DOT: Record<StepPhase, string> = {
   running: "bg-blue animate-pulse",
   completed: "bg-success",
   failed: "bg-danger",
+  cancelled: "bg-amber",
 };
 
 const PHASE_LABEL: Record<StepPhase, string> = {
   running: "running",
   completed: "done",
   failed: "failed",
+  cancelled: "stopped",
 };
 
 const PHASE_TEXT: Record<StepPhase, string> = {
   running: "text-blue",
   completed: "text-success",
   failed: "text-danger",
+  cancelled: "text-amber",
 };
 
 /**
  * Ordered list of steps as they execute. Shared by every tab that streams step
  * progress, so "blue means running, green means done, red means a failed
- * attempt" reads the same everywhere.
+ * attempt, amber means somebody stopped it" reads the same everywhere.
  */
 export function StepLog({ rows }: { rows: StepRow[] }) {
   return (

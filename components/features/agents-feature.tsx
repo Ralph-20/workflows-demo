@@ -17,12 +17,13 @@ import {
   PanelBody,
   PanelHeader,
   RunButton,
+  Spinner,
   SubSection,
   Textarea,
   WhatThisShows,
   type Metric,
 } from "@/components/ui";
-import { errorMessage } from "@/lib/api-types";
+import { errorMessage, postJson } from "@/lib/api-types";
 import type { AgentChunk, RunStep } from "@/lib/chunks";
 import type { Feature } from "@/lib/features";
 import type { RelayEvent } from "@/lib/relay";
@@ -31,7 +32,7 @@ import { isAbortError, readNdjson } from "@/lib/stream";
 type Row = {
   name: string;
   role: "model" | "tool";
-  phase: "running" | "completed" | "failed";
+  phase: "running" | "completed" | "failed" | "cancelled";
   attempt: number;
   durationMs?: number;
   detail?: string;
@@ -71,12 +72,24 @@ async function fetchForecast(city) {
   // Its own retryable unit: a flaky model call
   // retries without re-running this.
   return lookup(city);
-}`;
+}
+
+// The Stop button on this page. A route handler holding
+// only the run id can end the run from anywhere — no
+// shared process, no in-memory handle to find:
+//
+//   import { getRun } from 'workflow/api';
+//   await getRun(runId).cancel();
+//
+// The step already in flight finishes in the background;
+// nothing after it is ever dispatched.`;
 }
 
 export function AgentsFeature({ feature }: { feature: Feature }) {
   const [question, setQuestion] = useState(DEFAULT_QUESTION);
   const [pending, setPending] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -89,7 +102,35 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
   const [error, setError] = useState<string | null>(null);
 
   const controller = useRef<AbortController | null>(null);
+  // Read inside the stream callback, where `runId` state would be stale.
+  const liveRunId = useRef<string | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
+
+  /**
+   * Ends the run on the server. Deliberately does NOT abort the fetch: killing
+   * the stream client-side would only stop the browser watching, and the agent
+   * would carry on burning steps. The run's own terminal state comes back down
+   * the still-open stream as `done reason: "cancelled"`.
+   */
+  async function stop() {
+    const id = liveRunId.current;
+    if (!id) return;
+
+    setStopping(true);
+    try {
+      await postJson<{ status: string; cancelled: boolean }>("/api/demo", {
+        feature: "agents",
+        action: "cancel",
+        runId: id,
+      });
+      // Stays in the "Stopping…" state on purpose. The run is not terminal
+      // until the relay says so, and `run()` clears this in its finally — so
+      // the button cannot invite a second click into that gap.
+    } catch (cause) {
+      setError(errorMessage(cause));
+      setStopping(false);
+    }
+  }
 
   async function run() {
     controller.current?.abort();
@@ -97,30 +138,41 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
     controller.current = ac;
 
     setPending(true);
+    setStopping(false);
+    setCancelled(false);
     setError(null);
     setRows([]);
     setAnswer(null);
     setSteps([]);
     setSummary(null);
     setRunId(null);
+    liveRunId.current = null;
 
     // Tracked locally rather than from state, which would be stale inside this
     // closure. `failed` means the relay already explained the failure.
     let failed = false;
     let gotAnswer = false;
+    let stopped = false;
 
     try {
       await readNdjson<RelayEvent<AgentChunk>>(
         "/api/demo",
         { feature: "agents", question },
         (event) => {
-          if (event.type === "started") setRunId(event.runId);
+          if (event.type === "started") {
+            liveRunId.current = event.runId;
+            setRunId(event.runId);
+          }
           if (event.type === "error") {
             failed = true;
             setError(event.message);
           }
           if (event.type === "steps") setSteps(event.steps);
           if (event.type === "done" && event.reason === "failed") failed = true;
+          if (event.type === "done" && event.reason === "cancelled") {
+            stopped = true;
+            setCancelled(true);
+          }
           if (event.type !== "chunk") return;
 
           const chunk = event.chunk;
@@ -162,14 +214,16 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
       );
 
       // Belt to the relay's braces. Once the stream has ended, any step still
-      // showing "running" never finished, so mark it failed rather than leaving
-      // it spinning — and if nothing explained why, say something.
+      // showing "running" never finished — stopped on purpose if the run was
+      // cancelled, failed otherwise. Either way it must not keep spinning.
+      const unfinished: Row["phase"] = stopped ? "cancelled" : "failed";
       setRows((prev) =>
         prev.map((row) =>
-          row.phase === "running" ? { ...row, phase: "failed" } : row,
+          row.phase === "running" ? { ...row, phase: unfinished } : row,
         ),
       );
-      if (!failed && !gotAnswer) {
+      // A cancelled run has no answer BY DESIGN, so that is not an error.
+      if (!failed && !stopped && !gotAnswer) {
         setError(
           "The run ended before it produced an answer. Check the server logs for the workflow error.",
         );
@@ -179,6 +233,7 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
       setError(errorMessage(cause));
     } finally {
       setPending(false);
+      setStopping(false);
     }
   }
 
@@ -218,14 +273,46 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
     badge: step.attempt > 1 ? `attempt ${step.attempt}` : undefined,
   }));
 
+  const completedSteps = rows.filter((r) => r.phase === "completed").length;
+
   const metrics: Metric[] = [
-    { label: "Model", value: summary?.mock ? "mock" : "claude-sonnet-4.6" },
-    { label: "Named steps", value: steps.length > 0 ? String(steps.length) : "—" },
-    { label: "City resolved", value: summary?.city ?? "—", tone: "blue" },
     {
-      label: "Total duration",
-      value: summary ? `${summary.totalMs} ms` : "—",
-      tone: summary ? "success" : "default",
+      label: "Run status",
+      value: cancelled
+        ? "cancelled"
+        : summary
+          ? "completed"
+          : pending
+            ? "running"
+            : error
+              ? "failed"
+              : "—",
+      tone: cancelled
+        ? "amber"
+        : summary
+          ? "success"
+          : error
+            ? "danger"
+            : "default",
+    },
+    { label: "Model", value: summary?.mock ? "mock" : "claude-sonnet-4.6" },
+    {
+      label: "Named steps",
+      value:
+        steps.length > 0
+          ? String(steps.length)
+          : cancelled
+            ? String(completedSteps)
+            : "—",
+    },
+    {
+      label: cancelled ? "Done before Stop" : "Total duration",
+      value: summary
+        ? `${summary.totalMs} ms`
+        : cancelled
+          ? `${completedSteps} step${completedSteps === 1 ? "" : "s"}`
+          : "—",
+      tone: cancelled ? "amber" : summary ? "success" : "default",
     },
   ];
 
@@ -257,12 +344,25 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
             Run the agent
           </RunButton>
 
+          {/* Only reachable while a run is actually in flight and has an id —
+              there is nothing to cancel before or after that. */}
+          <button
+            type="button"
+            disabled={!pending || runId === null || stopping || cancelled}
+            onClick={stop}
+            className="flex items-center justify-center gap-2 rounded-[8px] border border-amber/45 bg-amber/10 px-3 py-2.5 text-[13px] font-medium text-amber transition-colors hover:bg-amber/15 disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2 disabled:text-fg-tertiary"
+          >
+            {stopping ? <Spinner /> : null}
+            {stopping ? "Stopping…" : "Stop this run"}
+          </button>
+
           <CodeBox code={snippet(question)} label="workflow" />
         </PanelBody>
       </Panel>
 
       <Panel>
         <PanelHeader label="Result">
+          {cancelled ? <Badge tone="amber">Cancelled</Badge> : null}
           {summary?.mock ? <Badge tone="mock">Mock model</Badge> : null}
           {summary && !summary.mock ? (
             <Badge tone="success">Live model</Badge>
@@ -271,36 +371,63 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
         <PanelBody className="flex-1">
           {error ? <ErrorBox message={error} /> : null}
 
-          {!error && rows.length === 0 ? (
+          {!error && rows.length === 0 && !cancelled ? (
             <EmptyState>
               Run one agent turn and watch it execute as a workflow — named
-              steps, real timings, one durable run.
+              steps, real timings, one durable run. Hit Stop while it is
+              thinking to end the run mid-flight.
             </EmptyState>
           ) : null}
 
-          {rows.length > 0 ? (
+          {rows.length > 0 || cancelled ? (
             <>
               <MetricGrid metrics={metrics} />
+
+              {cancelled ? (
+                <div className="rounded-[8px] border border-amber/40 bg-amber/8 px-4 py-3.5">
+                  <span className="label-mono text-amber">
+                    Cancelled server-side
+                  </span>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-amber">
+                    The run is terminal with status{" "}
+                    <code className="font-mono">cancelled</code> — not failed,
+                    and not just un-watched. The step log below stops where the
+                    agent stopped, and the step records under it come from the
+                    run&rsquo;s own event log, so you can check for yourself
+                    that nothing after the cancel ever executed.
+                  </p>
+                </div>
+              ) : null}
 
               {summary?.mock ? (
                 <div className="rounded-[8px] border border-amber/40 bg-amber/8 px-4 py-3.5">
                   <span className="label-mono text-amber">Mock model</span>
                   <p className="mt-1.5 text-[13px] leading-relaxed text-amber">
                     No <code className="font-mono">AI_GATEWAY_API_KEY</code> is
-                    set, so the two model calls returned canned text. Everything
-                    else on this tab is real: the run, the steps, the event log
-                    and the trace below all came from the workflow runtime.
+                    set, so the two model calls returned canned text after a
+                    pause about as long as a real call. Everything else on this
+                    tab is real: the run, the steps, the event log and the trace
+                    below all came from the workflow runtime.
                   </p>
                 </div>
               ) : null}
 
-              {summary ? (
+              {summary || cancelled ? (
                 <WhatThisShows>
                   Durable agents: every agent turn is a workflow, and every
                   model call and tool call is a named, retryable step. A flaky
                   model call retries on its own without re-running the tool, and
                   a crash mid-turn resumes from the last completed step instead
-                  of starting the conversation over. It is the pattern behind{" "}
+                  of starting the conversation over. Because the run is a
+                  durable object rather than a process, an agent that has gone
+                  off the rails can be stopped from anywhere with nothing but
+                  its run id — <code className="font-mono text-fg">Stop</code>{" "}
+                  above is one{" "}
+                  <code className="font-mono text-fg">
+                    getRun(runId).cancel()
+                  </code>{" "}
+                  in a route handler, and no further step is dispatched. It is
+                  the pattern behind{" "}
                   <a
                     href="https://github.com/vercel/eve"
                     target="_blank"
@@ -351,9 +478,22 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
                 </SubSection>
               ) : null}
 
-              {steps.length > 0 && runId ? (
+              {runId && (steps.length > 0 || cancelled) ? (
                 <SubSection label="Raw run">
-                  <JsonBlock value={{ runId, mock: summary?.mock, steps }} />
+                  <JsonBlock
+                    value={{
+                      runId,
+                      status: cancelled
+                        ? "cancelled"
+                        : summary
+                          ? "completed"
+                          : error
+                            ? "failed"
+                            : "running",
+                      mock: summary?.mock,
+                      steps,
+                    }}
+                  />
                 </SubSection>
               ) : null}
             </>

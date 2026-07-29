@@ -11,6 +11,21 @@ export function isMockMode(): boolean {
   return !process.env.AI_GATEWAY_API_KEY;
 }
 
+/**
+ * A canned string comes back instantly, which would make a mock agent turn
+ * finish faster than anyone can press Stop — and the Stop button is one of the
+ * things this tab exists to demonstrate. So the mock model calls spend roughly
+ * as long as a real one would.
+ *
+ * This is latency, not fabricated data: the answer is still deterministic and
+ * the UI still shows the MOCK badge.
+ */
+export const MOCK_MODEL_LATENCY_MS = 1_200;
+
+export function mockModelLatency(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, MOCK_MODEL_LATENCY_MS));
+}
+
 /** Stands in for the planning model call: picks a city out of the question. */
 export function mockPlanCity(question: string): City {
   const asked = question.toLowerCase();

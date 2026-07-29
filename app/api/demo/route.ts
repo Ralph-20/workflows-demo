@@ -93,6 +93,8 @@ export async function POST(request: Request): Promise<Response> {
  * gateway key is present. The workflow itself always runs for real.
  */
 async function agents(body: Body, signal: AbortSignal): Promise<Response> {
+  if (body.action === "cancel") return cancelAgentRun(body);
+
   const question =
     typeof body.question === "string" && body.question.trim().length > 0
       ? body.question.trim().slice(0, 280)
@@ -114,6 +116,45 @@ async function agents(body: Body, signal: AbortSignal): Promise<Response> {
     });
   } catch (error) {
     return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
+}
+
+/**
+ * Tab 06, Stop button — hard-cancel a run that is still in flight.
+ *
+ * A short JSON request, deliberately NOT a relay: the run's own stream is still
+ * being relayed by the request that started it, and that relay polls the run's
+ * status, so it is the one that notices the cancellation and closes the stream
+ * out with `reason: "cancelled"`. Cancelling here and reporting there keeps a
+ * single source of truth for the run's terminal state.
+ *
+ * This is the documented hard-cancellation path: the step that is mid-flight
+ * right now still finishes in the background, but no LATER step is dispatched,
+ * which is the part a runaway agent needs.
+ */
+async function cancelAgentRun(body: Body): Promise<Response> {
+  if (typeof body.runId !== "string" || body.runId.length === 0) {
+    return bad("Cancelling a run requires its run id.");
+  }
+
+  try {
+    const run = getRun(body.runId);
+    if (!(await run.exists)) {
+      return bad(`Run ${body.runId} no longer exists.`, 404);
+    }
+
+    // Racing the run to its own finish line is normal here — the answer can
+    // land between the click and this request. Report it rather than treating a
+    // cancel that arrived too late as a failure.
+    const status = await run.status;
+    if (status !== "running" && status !== "pending") {
+      return Response.json({ runId: body.runId, status, cancelled: false });
+    }
+
+    await run.cancel();
+    return Response.json({ runId: body.runId, status: "cancelled", cancelled: true });
+  } catch (error) {
+    return bad(`Could not cancel the run: ${message(error)}`, 500);
   }
 }
 

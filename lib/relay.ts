@@ -40,7 +40,13 @@ export type RelayEvent<C> =
       runId: string;
       /** The startIndex a client should use to reattach from here. */
       nextIndex: number;
-      reason: "closed" | "terminal" | "failed";
+      /**
+       * `failed` is a crash and always arrives after an `error` event (see the
+       * bug #9 contract). `cancelled` is somebody pressing Stop: also terminal,
+       * but not a fault, so it carries no `error` event and the UI must not
+       * render it as one.
+       */
+      reason: "closed" | "terminal" | "failed" | "cancelled";
     }
   | { type: "error"; message: string };
 
@@ -71,12 +77,22 @@ type ReadResult<C> = {
   result: ReadableStreamReadResult<C>;
 };
 
+type EndedStatus = "failed" | "cancelled";
+
 type FailureResult =
-  | { kind: "failed"; status: "failed" | "cancelled" }
+  | { kind: "failed"; status: EndedStatus }
   | { kind: "stopped" };
 
 /** How often the run's status is checked while waiting on its stream. */
 const STATUS_POLL_MS = 400;
+
+/**
+ * A cancelled run is terminal but not broken, so it gets its own reason rather
+ * than being reported as a failure.
+ */
+function reasonFor(status: EndedStatus): "failed" | "cancelled" {
+  return status === "cancelled" ? "cancelled" : "failed";
+}
 
 /**
  * Resolves when the run reaches a terminal FAILURE state, or when `stopped()`
@@ -85,6 +101,10 @@ const STATUS_POLL_MS = 400;
  * Deliberately silent on `completed`: a run can be marked completed while its
  * last chunks are still in flight, so the happy path must stay driven by the
  * stream to avoid truncating the tail.
+ *
+ * `cancelled` counts here too, and it is how a Stop button reaches this relay:
+ * the browser cancels the run through a separate request, and this poll is what
+ * notices and closes the stream out cleanly.
  */
 async function watchForFailure(
   run: Run<unknown>,
@@ -137,7 +157,7 @@ export function relayRun<C>({
       const reader = readable.getReader();
 
       let index = startIndex;
-      let reason: "closed" | "terminal" | "failed" = "closed";
+      let reason: "closed" | "terminal" | "failed" | "cancelled" = "closed";
       let sawTerminalChunk = false;
 
       // A workflow that THROWS never writes a terminal chunk and never closes
@@ -163,7 +183,7 @@ export function relayRun<C>({
           const winner = await Promise.race([pendingRead, failureWatch]);
 
           if (winner.kind !== "read") {
-            if (winner.kind === "failed") reason = "failed";
+            if (winner.kind === "failed") reason = reasonFor(winner.status);
             break;
           }
 
@@ -192,13 +212,18 @@ export function relayRun<C>({
       if (!sawTerminalChunk) {
         const status = await run.status.catch(() => null);
         if (status === "failed" || status === "cancelled") {
-          reason = "failed";
-          emit({
-            type: "error",
-            message:
-              (await runFailureMessage(runId)) ??
-              `The workflow run ${status} before it finished.`,
-          });
+          reason = reasonFor(status);
+          // Only a genuine failure gets an error event. Cancellation is a thing
+          // the user asked for, so it travels as a terminal reason alone —
+          // emitting an error here would render Stop as a crash.
+          if (status === "failed") {
+            emit({
+              type: "error",
+              message:
+                (await runFailureMessage(runId)) ??
+                "The workflow run failed before it finished.",
+            });
+          }
         }
       }
 

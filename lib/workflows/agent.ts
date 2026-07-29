@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { FatalError, getStepMetadata, getWritable } from "workflow";
 import type { AgentChunk } from "@/lib/chunks";
 import { coerceCity, CITIES, FORECASTS, type City } from "@/lib/forecast";
-import { mockAnswer, mockPlanCity } from "@/lib/mock";
+import { mockAnswer, mockModelLatency, mockPlanCity } from "@/lib/mock";
 
 /**
  * Tab 06 — agents on workflows.
@@ -73,6 +73,7 @@ async function planForecastLookup(
 
   let chosen: string;
   if (mock) {
+    await mockModelLatency();
     chosen = mockPlanCity(question);
   } else {
     try {
@@ -167,6 +168,7 @@ async function composeAnswer(
 
   let answer: string;
   if (mock) {
+    await mockModelLatency();
     answer = mockAnswer(city);
   } else {
     try {

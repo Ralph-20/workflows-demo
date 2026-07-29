@@ -132,7 +132,19 @@ export function SleepFeature({ feature }: { feature: Feature }) {
         }
         if (event.type === "started") setRunId(event.runId);
         if (event.type === "error") setError(event.message);
-        if (event.type === "done") nextIndex.current = event.nextIndex;
+        if (event.type === "done") {
+          nextIndex.current = event.nextIndex;
+          // A cancelled run is terminal but carries no error event, so without
+          // this the relay would just stop and the panel would sit there
+          // looking like it was still working. The realistic cause is the
+          // hygiene pass reaping this sleeper as abandoned.
+          if (event.reason === "cancelled") {
+            setSleeping(null);
+            setError(
+              "This run was cancelled before it finished — abandoned sleepers are reaped after an hour. Start a new one.",
+            );
+          }
+        }
         if (event.type === "chunk") {
           nextIndex.current = event.index + 1;
           apply(event.chunk);
