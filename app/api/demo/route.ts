@@ -1,11 +1,13 @@
 import { getRun, resumeHook, start } from "workflow/api";
 import { HookNotFoundError } from "workflow/errors";
 import {
+  isTerminalAgentChunk,
   isTerminalDurableChunk,
   isTerminalFanoutChunk,
   isTerminalHookChunk,
   isTerminalRetryChunk,
   isTerminalSleepChunk,
+  type AgentChunk,
   type DurableChunk,
   type FanoutChunk,
   type HookChunk,
@@ -19,7 +21,14 @@ import {
   MAX_FORCED_FAILURES,
   MAX_PIPELINE_STEPS,
 } from "@/lib/limits";
-import { relayRun, tailIndexOf, type RelayEvent } from "@/lib/relay";
+import { isMockMode } from "@/lib/mock";
+import {
+  listRunSteps,
+  relayRun,
+  tailIndexOf,
+  type RelayEvent,
+} from "@/lib/relay";
+import { agentTurn } from "@/lib/workflows/agent";
 import { durablePipeline } from "@/lib/workflows/durable";
 import { fanoutRun } from "@/lib/workflows/fanout";
 import { approvalRun } from "@/lib/workflows/hooks";
@@ -44,6 +53,7 @@ type Body = {
   items?: unknown;
   failures?: unknown;
   amountUsd?: unknown;
+  question?: unknown;
   token?: unknown;
   approved?: unknown;
   runId?: unknown;
@@ -71,8 +81,40 @@ export async function POST(request: Request): Promise<Response> {
   if (body.feature === "hooks") return hooks(body, request.signal);
   if (body.feature === "sleep") return sleeper(body, request.signal);
   if (body.feature === "parallel") return parallel(body, request.signal);
+  if (body.feature === "agents") return agents(body, request.signal);
 
   return bad(`Unknown feature: ${String(body.feature)}`);
+}
+
+/**
+ * Tab 06 — one agent turn, run as a workflow.
+ *
+ * Only the MODEL CALLS fall back to a deterministic mock, and only when no
+ * gateway key is present. The workflow itself always runs for real.
+ */
+async function agents(body: Body, signal: AbortSignal): Promise<Response> {
+  const question =
+    typeof body.question === "string" && body.question.trim().length > 0
+      ? body.question.trim().slice(0, 280)
+      : "Do I need a coat in Reykjavik today?";
+
+  try {
+    const run = await start(agentTurn, [question, isMockMode()]);
+
+    return relayRun<AgentChunk>({
+      runId: run.runId,
+      head: { type: "started", runId: run.runId },
+      isTerminal: isTerminalAgentChunk,
+      // Read the real step records once the run is done, so the trace comes
+      // from the event log rather than from what the workflow chose to stream.
+      epilogue: async () => [
+        { type: "steps", steps: await listRunSteps(run.runId) },
+      ],
+      signal,
+    });
+  } catch (error) {
+    return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
 }
 
 /** Tab 05 — fan N steps out at once. Capped at MAX_FANOUT (G5). */

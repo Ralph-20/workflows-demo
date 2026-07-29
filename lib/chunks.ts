@@ -164,3 +164,39 @@ export type FanoutChunk =
 export function isTerminalFanoutChunk(chunk: FanoutChunk): boolean {
   return chunk.kind === "run";
 }
+
+/** Tab 06 — agents on workflows. */
+export type AgentChunk =
+  | {
+      kind: "step";
+      phase: "running" | "completed";
+      name: string;
+      /** Whether this step wraps a model call or a tool call. */
+      role: "model" | "tool";
+      at: number;
+      durationMs?: number;
+      detail?: string;
+    }
+  | { kind: "answer"; at: number; text: string }
+  | {
+      kind: "run";
+      phase: "completed";
+      at: number;
+      totalMs: number;
+      mock: boolean;
+      city: string;
+    };
+
+export function isTerminalAgentChunk(chunk: AgentChunk): boolean {
+  return chunk.kind === "run";
+}
+
+/** Real step records read back from the run's event log after it finishes. */
+export type RunStep = {
+  stepName: string;
+  attempt: number;
+  status: string;
+  durationMs: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+};

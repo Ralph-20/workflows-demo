@@ -1,8 +1,8 @@
 import type { Feature, FeatureSlug } from "@/lib/features";
+import { AgentsFeature } from "@/components/features/agents-feature";
 import { DurableFeature } from "@/components/features/durable-feature";
 import { HooksFeature } from "@/components/features/hooks-feature";
 import { ParallelFeature } from "@/components/features/parallel-feature";
-import { PlaceholderFeature } from "@/components/features/placeholder";
 import { RetriesFeature } from "@/components/features/retries-feature";
 import { SleepFeature } from "@/components/features/sleep-feature";
 
@@ -22,7 +22,7 @@ const PANELS: Record<
   hooks: HooksFeature,
   sleep: SleepFeature,
   parallel: ParallelFeature,
-  agents: PlaceholderFeature,
+  agents: AgentsFeature,
 };
 
 export function FeaturePanels({ feature }: FeaturePanelProps) {

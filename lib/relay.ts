@@ -1,4 +1,7 @@
 import { getRun, type Run } from "workflow/api";
+import { parseStepName } from "workflow/observability";
+import { getWorld } from "workflow/runtime";
+import type { RunStep } from "@/lib/chunks";
 import { ndjsonResponse } from "@/lib/stream";
 
 /**
@@ -28,6 +31,11 @@ export type RelayEvent<C> =
       runIds: string[];
     }
   | {
+      /** Real step records read from the run's event log once it finished. */
+      type: "steps";
+      steps: RunStep[];
+    }
+  | {
       type: "done";
       runId: string;
       /** The startIndex a client should use to reattach from here. */
@@ -47,6 +55,11 @@ type RelayOptions<C> = {
   head?: RelayEvent<C>;
   /** Emitted before `head`, for out-of-band facts like a cleanup report. */
   prelude?: RelayEvent<C>[];
+  /**
+   * Emitted after the last chunk. Used to attach data that only exists once the
+   * run has finished, such as its materialized step records.
+   */
+  epilogue?: () => Promise<RelayEvent<C>[]>;
   /** Return true to end the relay after this chunk (suspension or completion). */
   isTerminal?: (chunk: C) => boolean;
   /** Client abort, forwarded by Vercel when supportsCancellation is set. */
@@ -58,6 +71,7 @@ export function relayRun<C>({
   startIndex = 0,
   head,
   prelude,
+  epilogue,
   isTerminal,
   signal,
 }: RelayOptions<C>): Response {
@@ -94,6 +108,10 @@ export function relayRun<C>({
         await reader.cancel().catch(() => {});
       }
 
+      if (epilogue) {
+        for (const event of await epilogue()) emit(event);
+      }
+
       emit({ type: "done", runId, nextIndex: index, reason });
     },
     (error) =>
@@ -113,5 +131,47 @@ export async function tailIndexOf(run: Run<unknown>): Promise<number> {
     return await run.getReadable().getTailIndex();
   } catch {
     return -1;
+  }
+}
+
+/**
+ * The run's own step records, straight from the event log — not a replay of
+ * what the workflow chose to stream. This is where real step names, attempt
+ * counts and materialized timings come from.
+ */
+export async function listRunSteps(runId: string): Promise<RunStep[]> {
+  try {
+    const { data } = await getWorld().steps.list({
+      runId,
+      pagination: { limit: 100 },
+      resolveData: "none",
+    });
+
+    return data
+      .map((step) => {
+        const startedAt = step.startedAt ? new Date(step.startedAt) : null;
+        const completedAt = step.completedAt ? new Date(step.completedAt) : null;
+
+        // Stored step names are fully qualified, e.g.
+        // "step//./lib/workflows/agent//fetchForecast". parseStepName is the
+        // supported way to get the readable function name back out.
+        const parsed = parseStepName(step.stepName);
+
+        return {
+          stepName: parsed?.functionName ?? step.stepName,
+          attempt: step.attempt,
+          status: step.status,
+          startedAt: startedAt?.toISOString() ?? null,
+          completedAt: completedAt?.toISOString() ?? null,
+          durationMs:
+            startedAt && completedAt
+              ? completedAt.getTime() - startedAt.getTime()
+              : null,
+        };
+      })
+      .sort((a, b) => (a.startedAt ?? "").localeCompare(b.startedAt ?? ""));
+  } catch {
+    // The trace is a bonus view; failing to read it must not fail the run.
+    return [];
   }
 }
