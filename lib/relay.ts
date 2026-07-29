@@ -21,6 +21,13 @@ export type RelayEvent<C> =
   | { type: "attached"; runId: string; startIndex: number; tailIndex: number }
   | { type: "chunk"; index: number; chunk: C }
   | {
+      /** Evidence that the lazy sleeper cleanup ran on this request. */
+      type: "cleanup";
+      cleaned: number;
+      scanned: number;
+      runIds: string[];
+    }
+  | {
       type: "done";
       runId: string;
       /** The startIndex a client should use to reattach from here. */
@@ -38,6 +45,8 @@ type RelayOptions<C> = {
    * reattaching, the tail index that separates backfill from live chunks).
    */
   head?: RelayEvent<C>;
+  /** Emitted before `head`, for out-of-band facts like a cleanup report. */
+  prelude?: RelayEvent<C>[];
   /** Return true to end the relay after this chunk (suspension or completion). */
   isTerminal?: (chunk: C) => boolean;
   /** Client abort, forwarded by Vercel when supportsCancellation is set. */
@@ -48,11 +57,13 @@ export function relayRun<C>({
   runId,
   startIndex = 0,
   head,
+  prelude,
   isTerminal,
   signal,
 }: RelayOptions<C>): Response {
   return ndjsonResponse<RelayEvent<C>>(
     async (emit) => {
+      for (const event of prelude ?? []) emit(event);
       if (head) emit(head);
 
       const run = getRun(runId);

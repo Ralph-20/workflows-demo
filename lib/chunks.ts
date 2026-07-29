@@ -105,3 +105,28 @@ export type HookChunk =
 export function isTerminalHookChunk(chunk: HookChunk): boolean {
   return chunk.kind === "awaiting" || chunk.kind === "run";
 }
+
+/** Tab 04 — sleep without compute. */
+export type SleepChunk =
+  | {
+      kind: "step";
+      phase: "running" | "completed";
+      name: string;
+      at: number;
+      durationMs?: number;
+      detail?: string;
+    }
+  | {
+      kind: "sleeping";
+      at: number;
+      /** Scheduled wake time, ~30 days out. */
+      wakeAt: number;
+      duration: string;
+    }
+  | { kind: "woke"; at: number; sleptMs: number }
+  | { kind: "run"; phase: "completed"; at: number; totalMs: number };
+
+/** Same reasoning as hooks: the stream stays open while the run sleeps. */
+export function isTerminalSleepChunk(chunk: SleepChunk): boolean {
+  return chunk.kind === "sleeping" || chunk.kind === "run";
+}

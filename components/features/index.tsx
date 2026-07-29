@@ -3,6 +3,7 @@ import { DurableFeature } from "@/components/features/durable-feature";
 import { HooksFeature } from "@/components/features/hooks-feature";
 import { PlaceholderFeature } from "@/components/features/placeholder";
 import { RetriesFeature } from "@/components/features/retries-feature";
+import { SleepFeature } from "@/components/features/sleep-feature";
 
 export type FeaturePanelProps = { feature: Feature };
 
@@ -18,7 +19,7 @@ const PANELS: Record<
   durable: DurableFeature,
   retries: RetriesFeature,
   hooks: HooksFeature,
-  sleep: PlaceholderFeature,
+  sleep: SleepFeature,
   parallel: PlaceholderFeature,
   agents: PlaceholderFeature,
 };

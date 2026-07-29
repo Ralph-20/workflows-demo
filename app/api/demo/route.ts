@@ -4,15 +4,19 @@ import {
   isTerminalDurableChunk,
   isTerminalHookChunk,
   isTerminalRetryChunk,
+  isTerminalSleepChunk,
   type DurableChunk,
   type HookChunk,
   type RetryChunk,
+  type SleepChunk,
 } from "@/lib/chunks";
+import { cleanupStaleRuns } from "@/lib/cleanup";
 import { clampInt, MAX_FORCED_FAILURES, MAX_PIPELINE_STEPS } from "@/lib/limits";
-import { relayRun, tailIndexOf } from "@/lib/relay";
+import { relayRun, tailIndexOf, type RelayEvent } from "@/lib/relay";
 import { durablePipeline } from "@/lib/workflows/durable";
 import { approvalRun } from "@/lib/workflows/hooks";
 import { retryingStep } from "@/lib/workflows/retries";
+import { retentionRun } from "@/lib/workflows/sleep";
 
 /**
  * One entry point for every capability, discriminated by `feature`. Each
@@ -56,8 +60,85 @@ export async function POST(request: Request): Promise<Response> {
   if (body.feature === "durable") return durable(body, request.signal);
   if (body.feature === "retries") return retries(body, request.signal);
   if (body.feature === "hooks") return hooks(body, request.signal);
+  if (body.feature === "sleep") return sleeper(body, request.signal);
 
   return bad(`Unknown feature: ${String(body.feature)}`);
+}
+
+/**
+ * Tab 04 — start a run that sleeps for 30 days, or wake one early.
+ *
+ * Every request through here first cancels abandoned runs older than an hour,
+ * so a visitor who starts a sleeper and walks away cannot leave it parked for a
+ * month. The report is relayed to the client as evidence that it ran.
+ */
+async function sleeper(body: Body, signal: AbortSignal): Promise<Response> {
+  const cleanup = await cleanupStaleRuns();
+  const prelude: RelayEvent<SleepChunk>[] = [
+    {
+      type: "cleanup",
+      cleaned: cleanup.cleaned,
+      scanned: cleanup.scanned,
+      runIds: cleanup.runIds,
+    },
+  ];
+
+  if (body.action === "wake") {
+    if (typeof body.runId !== "string" || body.runId.length === 0) {
+      return bad("Waking a run requires its run id.");
+    }
+
+    const startIndex = clampInt(body.startIndex, 0, Number.MAX_SAFE_INTEGER, 0);
+
+    try {
+      const run = getRun(body.runId);
+      if (!(await run.exists)) {
+        return bad(
+          `Run ${body.runId} no longer exists. Start a new one.`,
+          404,
+        );
+      }
+
+      // A stale tab can try to wake a run the cleanup pass already cancelled.
+      // The run still exists, so `exists` is true — only the status shows it.
+      // Waking it anyway fails deep in the runtime with an opaque message, so
+      // catch it here and say what actually happened.
+      const status = await run.status;
+      if (status !== "running" && status !== "pending") {
+        return bad(
+          `This run is already ${status} — an abandoned sleeper is cancelled after an hour. Start a new one.`,
+          409,
+        );
+      }
+
+      // Interrupts the pending sleep() and lets the run continue.
+      await run.wakeUp();
+
+      return relayRun<SleepChunk>({
+        runId: body.runId,
+        startIndex,
+        head: { type: "started", runId: body.runId },
+        prelude,
+        isTerminal: isTerminalSleepChunk,
+        signal,
+      });
+    } catch (error) {
+      return bad(`Could not wake the run: ${message(error)}`, 500);
+    }
+  }
+
+  try {
+    const run = await start(retentionRun);
+    return relayRun<SleepChunk>({
+      runId: run.runId,
+      head: { type: "started", runId: run.runId },
+      prelude,
+      isTerminal: isTerminalSleepChunk,
+      signal,
+    });
+  } catch (error) {
+    return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
 }
 
 /**
