@@ -1,0 +1,168 @@
+type MoreCard = {
+  title: string;
+  description: string;
+  href: string;
+  /**
+   * Pre-release marker. As of this build npm has `workflow@4.7.0` on `latest`
+   * and `5.0.0-beta.37` on `beta`, so everything tagged here is genuinely not
+   * GA yet — the tag is not decoration.
+   *
+   * Two different gates, deliberately not collapsed into one label:
+   * - "5.0 beta" needs a 5.x pre-release of the SDK. This demo is pinned to
+   *   4.6.2, so those features do NOT work here.
+   * - "beta" is a platform feature behind an opt-in, independent of SDK version.
+   */
+  tag?: "5.0 beta" | "beta";
+};
+
+const MORE: MoreCard[] = [
+  {
+    title: "Versioning & replays",
+    description:
+      "In-flight runs keep executing the code they started on, so a deploy mid-run cannot rewrite history. Replay a past run against new code to see what would change.",
+    href: "https://workflow-sdk.dev/docs/foundations/versioning",
+  },
+  {
+    title: "Observability dashboard",
+    description:
+      "Every run, step, attempt, and payload is inspectable after the fact — the same event log the runtime replays from, rendered as a timeline.",
+    href: "https://workflow-sdk.dev/docs/observability",
+  },
+  {
+    title: "Trace viewer",
+    description:
+      "Search across spans, zoom into any part of the timeline, and step through with the keyboard, then click a step for its inputs, outputs and run metadata. Runs locally too.",
+    href: "https://vercel.com/changelog/redesigned-trace-viewer-for-vercel-workflows",
+  },
+  {
+    title: "Python runtime",
+    description:
+      "Write workflows and steps in Python with the same durable semantics, and call them from the same project as your TypeScript ones.",
+    href: "https://vercel.com/docs/workflows/python",
+  },
+  {
+    title: "Queues under the hood",
+    description:
+      "Each step is a queue message with its own delivery guarantees and backoff. The queue is part of the platform, so there is nothing for you to run.",
+    href: "https://workflow-sdk.dev/docs/api-reference/workflow-runtime/world/queue",
+  },
+  {
+    title: "Private-by-default handlers",
+    description:
+      "Generated workflow endpoints are registered as queue consumers, not public routes — they are not reachable from the internet even though they live in your app.",
+    href: "https://workflow-sdk.dev/worlds/vercel",
+  },
+  {
+    title: "Stop a run from anywhere",
+    description:
+      "A route handler holding nothing but a run id can end the run with getRun(runId).cancel() — no shared process, no in-memory handle. The Stop button on tab 06 is exactly this.",
+    href: "https://workflow-sdk.dev/cookbook/agent-patterns/agent-cancellation",
+  },
+  {
+    title: "Runs anywhere",
+    description:
+      "Vercel-managed with zero configuration, or self-hosted on your own Postgres — the SDK is Apache-2.0 and the Postgres World is a production-ready backend for running workflows on your own infrastructure.",
+    href: "https://workflow-sdk.dev/worlds",
+  },
+  {
+    title: "Payload headroom for agents",
+    description:
+      "50 MB per step payload and up to 2 GB across an entire run, which is enough to move images, video and large model context through a long chain of steps.",
+    href: "https://vercel.com/blog/a-new-programming-model-for-durable-execution",
+  },
+  {
+    title: "Streaming namespaces",
+    description:
+      "Open several independent durable streams from one run with getWritable({ namespace }) — logs on one channel, metrics on another, progress on a third.",
+    href: "https://workflow-sdk.dev/docs/foundations/streaming",
+  },
+  {
+    title: "workflow inspect CLI",
+    description:
+      "Inspect runs, steps, events and streams from your terminal, against local state or a deployment — and --web serves the same view as a local UI.",
+    href: "https://workflow-sdk.dev/docs/observability",
+  },
+  {
+    title: "Regional run placement",
+    description:
+      "A run keeps its state, queue dispatch and output streams in one home region for its lifetime — where it started, or a region you pass to start(). An agent serving Sydney executes and streams from Sydney, and fails over to the next closest region during an incident.",
+    href: "https://vercel.com/changelog/configure-where-run-state-lives-in-vercel-workflows",
+    tag: "5.0 beta",
+  },
+  {
+    title: "AbortSignal across steps",
+    description:
+      "The standard AbortController and AbortSignal APIs work across workflow and step boundaries. The signal stays durable through suspensions and replay, so a running step sees the cancellation even in a separate function invocation.",
+    href: "https://vercel.com/changelog/workflow-sdk-now-supports-inflight-cancellation",
+    tag: "5.0 beta",
+  },
+  {
+    title: "Compressed payloads",
+    description:
+      "Run, hook and step inputs and outputs are compressed with zstd, automatically and only when it helps. For the JSON payloads typical of AI conversations, storage size and cost can drop by up to 85%.",
+    href: "https://vercel.com/changelog/workflow-sdk-now-compresses-run-and-step-payloads",
+    tag: "5.0 beta",
+  },
+  {
+    title: "Eager step processing",
+    description:
+      "Steps execute inline in the same invocation as the workflow replay instead of round-tripping the queue every time, and only fan out to the queue for real parallelism. A ten-step serial run used to need about 21 invocations.",
+    href: "https://workflow-sdk.dev/v5/docs/changelog/eager-processing",
+    tag: "5.0 beta",
+  },
+  {
+    title: "30-minute steps",
+    description:
+      "Steps on Pro and Enterprise can run up to 30 minutes, up from 800 seconds, via extended function durations. Opt in with an environment variable; Hobby stays at 5 minutes.",
+    href: "https://vercel.com/changelog/workflow-steps-now-support-extended-function-durations",
+    tag: "beta",
+  },
+];
+
+export function MoreGrid() {
+  return (
+    <section className="mt-20">
+      <h2 className="text-[22px] font-medium tracking-[-0.02em]">
+        More of what Workflows includes
+      </h2>
+      <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-secondary">
+        Covered in the docs but not wired up as live demos on this page.
+        Everything here ships today except the tagged cards:{" "}
+        <span className="font-mono text-[12px] text-amber">5.0 beta</span> needs
+        a 5.x pre-release of the SDK, so those four do not work on the 4.6.2 this
+        demo is pinned to, and{" "}
+        <span className="font-mono text-[12px] text-amber">beta</span> is a
+        platform feature behind an opt-in.
+      </p>
+
+      {/* 16 cards, so 4-up on wide screens leaves no half-empty final row. */}
+      <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {MORE.map((item) => (
+          <li key={item.title}>
+            <a
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex h-full flex-col gap-2 rounded-[12px] border border-line bg-surface p-5 transition-colors hover:border-line-hover hover:bg-surface-2"
+            >
+              <span className="flex flex-wrap items-center gap-1.5 text-[14px] font-medium">
+                {item.title}
+                <span className="text-fg-tertiary transition-colors group-hover:text-blue">
+                  →
+                </span>
+                {item.tag ? (
+                  <span className="rounded-full border border-amber/40 bg-amber/10 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-amber uppercase">
+                    {item.tag}
+                  </span>
+                ) : null}
+              </span>
+              <span className="text-[13px] leading-relaxed text-fg-secondary">
+                {item.description}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

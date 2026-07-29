@@ -1,0 +1,27 @@
+# secrets — never commit
+.env*
+!.env.example
+
+# dependencies
+node_modules/
+
+# next
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# workflow devkit local runtime state
+.workflow/
+.workflow-data/
+
+# misc
+.DS_Store
+.vercel
+/.swc
+
+# browser automation scratch
+.playwright-cli/
+
+# agent/session state — contains internal context, never publish
+.claude/
