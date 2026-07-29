@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-bg: #050505;
+  --color-bg-soft: #0a0a0a;
+  --color-surface: #111111;
+  --color-surface-2: #171717;
+
+  /* Lines */
+  --color-line: #262626;
+  --color-line-hover: #3f3f3f;
+
+  /* Text */
+  --color-fg: #fafafa;
+  --color-fg-secondary: #a3a3a3;
+  --color-fg-tertiary: #737373;
+
+  /* Semantic accents */
+  --color-success: #3ecf8e;
+  --color-blue: #60a5fa;
+  --color-focus: #38bdf8;
+  --color-amber: #fbbf24;
+  --color-danger: #f87171;
+
+  /* Type */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* Radii */
+  --radius-card: 12px;
+  --radius-ui: 8px;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-blue) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-line-hover);
+  }
+}
+
+/* Small-caps mono label used for metric keys and section headers. */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-fg-tertiary);
+}
+
+/* 13px mono: code, metric values, JSON. */
+@utility mono-13 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@utility stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: var(--color-blue);
+  animation: caret-blink 1s steps(1) infinite;
+}
