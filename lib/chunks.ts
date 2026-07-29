@@ -63,3 +63,45 @@ export type RetryChunk =
 export function isTerminalRetryChunk(chunk: RetryChunk): boolean {
   return chunk.kind === "run";
 }
+
+/** Tab 03 — human-in-the-loop hooks. */
+export type HookChunk =
+  | {
+      kind: "step";
+      phase: "running" | "completed";
+      name: string;
+      at: number;
+      durationMs?: number;
+      detail?: string;
+    }
+  | {
+      kind: "awaiting";
+      /** Hook token the browser posts back to resume this exact run. */
+      token: string;
+      at: number;
+      summary: string;
+    }
+  | {
+      kind: "decision";
+      approved: boolean;
+      reviewer: string;
+      at: number;
+      /** How long the run sat suspended, measured across the hook. */
+      waitedMs: number;
+    }
+  | {
+      kind: "run";
+      phase: "completed";
+      outcome: "approved" | "rejected";
+      at: number;
+      totalMs: number;
+    };
+
+/**
+ * The start leg ends at `awaiting`: the run is suspended, and a run's stream
+ * does NOT close on suspension, so relaying past this point would hold the
+ * response open for nothing.
+ */
+export function isTerminalHookChunk(chunk: HookChunk): boolean {
+  return chunk.kind === "awaiting" || chunk.kind === "run";
+}

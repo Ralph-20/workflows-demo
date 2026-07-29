@@ -1,13 +1,17 @@
-import { getRun, start } from "workflow/api";
+import { getRun, resumeHook, start } from "workflow/api";
+import { HookNotFoundError } from "workflow/errors";
 import {
   isTerminalDurableChunk,
+  isTerminalHookChunk,
   isTerminalRetryChunk,
   type DurableChunk,
+  type HookChunk,
   type RetryChunk,
 } from "@/lib/chunks";
 import { clampInt, MAX_FORCED_FAILURES, MAX_PIPELINE_STEPS } from "@/lib/limits";
 import { relayRun, tailIndexOf } from "@/lib/relay";
 import { durablePipeline } from "@/lib/workflows/durable";
+import { approvalRun } from "@/lib/workflows/hooks";
 import { retryingStep } from "@/lib/workflows/retries";
 
 /**
@@ -26,6 +30,9 @@ type Body = {
   action?: unknown;
   steps?: unknown;
   failures?: unknown;
+  amountUsd?: unknown;
+  token?: unknown;
+  approved?: unknown;
   runId?: unknown;
   startIndex?: unknown;
 };
@@ -48,8 +55,63 @@ export async function POST(request: Request): Promise<Response> {
 
   if (body.feature === "durable") return durable(body, request.signal);
   if (body.feature === "retries") return retries(body, request.signal);
+  if (body.feature === "hooks") return hooks(body, request.signal);
 
   return bad(`Unknown feature: ${String(body.feature)}`);
+}
+
+/**
+ * Tab 03 — start a run that suspends at a hook, or resume it with a decision.
+ *
+ * The start leg ends as soon as the run suspends (see isTerminalHookChunk), so
+ * nothing is held open while a human thinks about it.
+ */
+async function hooks(body: Body, signal: AbortSignal): Promise<Response> {
+  if (body.action === "resume") {
+    if (typeof body.token !== "string" || typeof body.runId !== "string") {
+      return bad("Resuming requires the hook token and the run id.");
+    }
+
+    const approved = body.approved === true;
+
+    try {
+      await resumeHook(body.token, { approved, reviewer: "demo-reviewer" });
+    } catch (error) {
+      // A token that was already used, or belongs to a run that has since gone
+      // away, is a normal outcome here (double click, stale tab) — not a crash.
+      if (HookNotFoundError.is(error)) {
+        return bad(
+          "That approval hook no longer exists — it was already decided, or the run has expired. Start a new run to try again.",
+          409,
+        );
+      }
+      return bad(`Could not resume the run: ${message(error)}`, 500);
+    }
+
+    const startIndex = clampInt(body.startIndex, 0, Number.MAX_SAFE_INTEGER, 0);
+
+    return relayRun<HookChunk>({
+      runId: body.runId,
+      startIndex,
+      head: { type: "started", runId: body.runId },
+      isTerminal: isTerminalHookChunk,
+      signal,
+    });
+  }
+
+  const amountUsd = clampInt(body.amountUsd, 1, 1_000_000, 42_000);
+
+  try {
+    const run = await start(approvalRun, [amountUsd]);
+    return relayRun<HookChunk>({
+      runId: run.runId,
+      head: { type: "started", runId: run.runId },
+      isTerminal: isTerminalHookChunk,
+      signal,
+    });
+  } catch (error) {
+    return bad(`Could not start the workflow: ${message(error)}`, 500);
+  }
 }
 
 /** Tab 02 — run a step that fails on purpose N times, then succeeds. */
