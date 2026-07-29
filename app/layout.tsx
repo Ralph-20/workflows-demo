@@ -21,9 +21,15 @@ const TITLE = "Workflows — durable functions that survive anything";
 const DESCRIPTION =
   "A live demo of Vercel Workflows: durable execution, automatic retries, human-in-the-loop hooks, month-long sleeps for $0 compute, parallel fan-out, and agents built from named steps.";
 
+/**
+ * metadataBase is set explicitly so the OG image resolves to an absolute URL.
+ * On Vercel that is the production domain; locally it falls back to whatever
+ * port the server was started on, which is why og:image points at localhost in
+ * development. That is expected — crawlers only ever see the deployed value.
+ */
 const siteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
   ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : "http://localhost:3000";
+  : `http://localhost:${process.env.PORT ?? 3000}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
