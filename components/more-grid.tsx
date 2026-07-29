@@ -1,4 +1,12 @@
-const MORE = [
+type MoreCard = {
+  title: string;
+  description: string;
+  href: string;
+  /** Version marker for anything not in the 4.x line. */
+  tag?: string;
+};
+
+const MORE: MoreCard[] = [
   {
     title: "Versioning & replays",
     description:
@@ -32,8 +40,9 @@ const MORE = [
   {
     title: "Multi-region data",
     description:
-      "Pin run data to the region that created it instead of a single home region. Available from the 5.0 line; 4.x keeps all workflow data in one region.",
+      "Pin run data to the region that created it instead of a single home region. The 4.x line this demo runs on keeps all workflow data in one region.",
     href: "https://workflow-sdk.dev/v5/worlds/vercel",
+    tag: "5.0 beta",
   },
   {
     title: "Streaming namespaces",
@@ -70,11 +79,16 @@ export function MoreGrid() {
               rel="noreferrer"
               className="group flex h-full flex-col gap-2 rounded-[12px] border border-line bg-surface p-5 transition-colors hover:border-line-hover hover:bg-surface-2"
             >
-              <span className="flex items-center gap-1.5 text-[14px] font-medium">
+              <span className="flex flex-wrap items-center gap-1.5 text-[14px] font-medium">
                 {item.title}
                 <span className="text-fg-tertiary transition-colors group-hover:text-blue">
                   →
                 </span>
+                {item.tag ? (
+                  <span className="rounded-full border border-amber/40 bg-amber/10 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-amber uppercase">
+                    {item.tag}
+                  </span>
+                ) : null}
               </span>
               <span className="text-[13px] leading-relaxed text-fg-secondary">
                 {item.description}

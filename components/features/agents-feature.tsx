@@ -268,8 +268,16 @@ export function AgentsFeature({ feature }: { feature: Feature }) {
                   model call and tool call is a named, retryable step. A flaky
                   model call retries on its own without re-running the tool, and
                   a crash mid-turn resumes from the last completed step instead
-                  of starting the conversation over. This is the pattern behind
-                  Vercel&rsquo;s open-source Eve agent framework.
+                  of starting the conversation over. It is the pattern behind{" "}
+                  <a
+                    href="https://github.com/vercel/eve"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue underline decoration-blue/30 underline-offset-2 transition-colors hover:decoration-blue"
+                  >
+                    Eve
+                  </a>
+                  , Vercel&rsquo;s open-source agent framework.
                 </WhatThisShows>
               ) : null}
 
